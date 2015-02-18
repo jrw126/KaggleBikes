@@ -1,0 +1,77 @@
+---
+title: "Untitled"
+author: "John Wright"
+date: "Wednesday, February 11, 2015"
+output: html_document
+---
+
+```{r}
+library(party)
+library(randomForest)
+
+setwd("C:\\Users\\jwright\\Desktop\\p4")
+
+train <- read.csv("train.csv", header = T)
+test <- read.csv("test.csv", header = T)
+
+```
+
+
+# prepare data
+```{r}
+
+# fix data types
+cleaner <- function(x) {
+      x$datetime <- as.POSIXct(x$datetime)
+      x[, 2:5] <- lapply(x[, 2:5], factor)
+      x[, c(6:7, 9)] <- lapply(x[, c(6:7, 9)], as.numeric)
+      x[, 8] <- lapply(x[, 8], function(x) as.integer(as.character(x)))
+      x
+}
+
+train <- cleaner(train); test <- cleaner(test)
+
+# generate new features: weekday and hour, bins of temp and windspeed
+dataPrep <- function(x) {
+      x$day <- factor(weekdays(x$datetime))
+      x$hour <- factor(as.integer(format(x$datetime, format = "%H")))
+      x$is_sun <- factor(ifelse(x$day == "Sunday", 1, 0))
+      x$atemp_b <- cut(x$atemp, 
+                       breaks = c(0, 10, 15, 24, 31, 100),
+                       labels = c("cold", "chilly", "comfortable", "warm", "hot"))
+      x$windy <- factor(ifelse(x$windspeed > 35, 1, 0))
+      x$timerange <- cut(as.numeric(x$hour),
+                         breaks = c(0, 7, 12, 17, 21, 24),
+                         labels = c("early", "morning", "afternoon", "evening", "night"))
+      x
+}
+
+train <- dataPrep(train); test <- dataPrep(test)
+
+```
+
+# model
+```{r}
+# model formula
+trainVars <- "~ season + holiday + workingday + weather + day + 
+              hour + is_sun + atemp_b + windy + timerange"
+
+# fit the model
+# fit.reg <- ctree(as.formula(paste("registered", trainVars)), train)
+# fit.cas <- ctree(as.formula(paste("casual", trainVars)), train)
+fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train)
+fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
+
+# generate predictions
+pred.reg <- predict(fit.reg, test)
+pred.cas <- predict(fit.cas, test)
+
+# submission output file
+submit <- data.frame(datetime = test$datetime, count = as.integer(pred.reg + pred.cas))
+write.csv(submit, "rf_20150218.csv", row.names = F)
+
+```
+
+
+
+
