@@ -9,7 +9,7 @@ output: html_document
 library(party)
 library(randomForest)
 
-setwd("C:\\Users\\jwright\\Desktop\\p4")
+setwd("C:\\Users\\jwright\\Desktop\\p5")
 
 train <- read.csv("train.csv", header = T)
 test <- read.csv("test.csv", header = T)
@@ -33,6 +33,7 @@ train <- cleaner(train); test <- cleaner(test)
 
 # generate new features: weekday and hour, bins of temp and windspeed
 dataPrep <- function(x) {
+      x$month <- factor(months(x$datetime))
       x$day <- factor(weekdays(x$datetime))
       x$hour <- factor(as.integer(format(x$datetime, format = "%H")))
       x$is_sun <- factor(ifelse(x$day == "Sunday", 1, 0))
@@ -68,7 +69,7 @@ pred.cas <- predict(fit.cas, test)
 
 # submission output file
 submit <- data.frame(datetime = test$datetime, count = as.integer(pred.reg + pred.cas))
-write.csv(submit, "rf_20150218.csv", row.names = F)
+# write.csv(submit, "rf_20150218.csv", row.names = F)
 
 ```
 
