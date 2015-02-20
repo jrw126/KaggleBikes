@@ -8,6 +8,7 @@ output: html_document
 ```{r}
 library(party)
 library(randomForest)
+library(lubridate)
 
 setwd("C:\\Users\\jwright\\Desktop\\p5")
 
@@ -33,6 +34,7 @@ train <- cleaner(train); test <- cleaner(test)
 
 # generate new features: weekday and hour, bins of temp and windspeed
 dataPrep <- function(x) {
+      x$year <- factor(year(x$datetime))
       x$month <- factor(months(x$datetime))
       x$day <- factor(weekdays(x$datetime))
       x$hour <- factor(as.integer(format(x$datetime, format = "%H")))
@@ -44,32 +46,50 @@ dataPrep <- function(x) {
       x$timerange <- cut(as.numeric(x$hour),
                          breaks = c(0, 7, 12, 17, 21, 24),
                          labels = c("early", "morning", "afternoon", "evening", "night"))
+      x$busy <- "verylow"
+      x$busy[x$hour %in% c(0, 6, 22, 23)] <- "low"
+      x$busy[x$hour %in% c(9, 10, 20, 21)] <- "moderate"
+      x$busy[x$hour %in% c(7, 11, 12, 13, 14, 15, 16, 19)] <- "high"
+      x$busy[x$hour %in% c(8, 17, 18)] <- "veryhigh"
+      x$busy <- factor(x$busy)
       x
 }
 
 train <- dataPrep(train); test <- dataPrep(test)
+
+# exploratory graphs
+xyplot(count ~ 1:nrow(train) | hour, data = train, group = workingday)
 
 ```
 
 # model
 ```{r}
 # model formula
-trainVars <- "~ season + holiday + workingday + weather + day + 
-              hour + is_sun + atemp_b + windy + timerange"
+trainVars <- "~ year + month + season + holiday + workingday + weather + day + 
+              hour + is_sun + atemp_b + windy + timerange + busy"
 
-# fit the model
-# fit.reg <- ctree(as.formula(paste("registered", trainVars)), train)
-# fit.cas <- ctree(as.formula(paste("casual", trainVars)), train)
-fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train)
-fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
+# fit the models
 
-# generate predictions
-pred.reg <- predict(fit.reg, test)
-pred.cas <- predict(fit.cas, test)
+# ctree
+ctree.fit.reg <- ctree(as.formula(paste("registered", trainVars)), train)
+ctree.fit.cas <- ctree(as.formula(paste("casual", trainVars)), train)
+ctree.pred.reg <- predict(ctree.fit.reg, test)
+ctree.pred.cas <- predict(ctree.fit.cas, test)
+
+# randomforest
+rf.fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train)
+rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
+rf.pred.reg <- predict(rf.fit.reg, test)
+rf.pred.cas <- predict(rf.fit.cas, test)
+
+# average the models together
+preds <- rowMeans(data.frame(ctree = (ctree.pred.reg + ctree.pred.cas),
+                             rf = (rf.pred.reg + rf.pred.cas)
+                             ), na.rm = T)
 
 # submission output file
-submit <- data.frame(datetime = test$datetime, count = as.integer(pred.reg + pred.cas))
-# write.csv(submit, "rf_20150218.csv", row.names = F)
+submit <- data.frame(datetime = test$datetime, count = as.integer(preds))
+# write.csv(submit, "bag_20150219.csv", row.names = F)
 
 ```
 
