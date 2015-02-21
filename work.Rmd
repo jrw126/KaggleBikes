@@ -9,6 +9,8 @@ output: html_document
 library(party)
 library(randomForest)
 library(lubridate)
+library(lattice)
+library(gbm)
 
 setwd("C:\\Users\\jwright\\Desktop\\p5")
 
@@ -39,6 +41,9 @@ dataPrep <- function(x) {
       x$day <- factor(weekdays(x$datetime))
       x$hour <- factor(as.integer(format(x$datetime, format = "%H")))
       x$is_sun <- factor(ifelse(x$day == "Sunday", 1, 0))
+      x$temp_b <- cut(x$temp, 
+                      breaks = c(0, 10, 15, 24, 31, 100),
+                      labels = c("cold", "chilly", "comfortable", "warm", "hot"))
       x$atemp_b <- cut(x$atemp, 
                        breaks = c(0, 10, 15, 24, 31, 100),
                        labels = c("cold", "chilly", "comfortable", "warm", "hot"))
@@ -55,7 +60,11 @@ dataPrep <- function(x) {
       x
 }
 
+train[, c("registered", "casual")] <- lapply(train[, c("registered", "casual")], log1p)
 train <- dataPrep(train); test <- dataPrep(test)
+
+# http://blog.dato.com/using-gradient-boosted-trees-to-predict-bike-sharing-demand
+# http://beyondvalence.blogspot.com/2014/06/predicting-capital-bikeshare-demand-in.html
 
 # exploratory graphs
 xyplot(count ~ 1:nrow(train) | hour, data = train, group = workingday)
@@ -64,23 +73,33 @@ xyplot(count ~ 1:nrow(train) | hour, data = train, group = workingday)
 
 # model
 ```{r}
+set.seed(123)
+
 # model formula
 trainVars <- "~ year + month + season + holiday + workingday + weather + day + 
-              hour + is_sun + atemp_b + windy + timerange + busy"
+              hour + is_sun + atemp_b + windy + timerange + busy + temp_b"
 
 # fit the models
 
 # ctree
 ctree.fit.reg <- ctree(as.formula(paste("registered", trainVars)), train)
 ctree.fit.cas <- ctree(as.formula(paste("casual", trainVars)), train)
-ctree.pred.reg <- predict(ctree.fit.reg, test)
-ctree.pred.cas <- predict(ctree.fit.cas, test)
+ctree.pred.reg <- expm1(predict(ctree.fit.reg, test))
+ctree.pred.cas <- expm1(predict(ctree.fit.cas, test))
 
 # randomforest
 rf.fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train)
 rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
-rf.pred.reg <- predict(rf.fit.reg, test)
-rf.pred.cas <- predict(rf.fit.cas, test)
+rf.pred.reg <- expm1(predict(rf.fit.reg, test))
+rf.pred.cas <- expm1(predict(rf.fit.cas, test))
+
+# # gbm
+# gbm.fit.reg <- gbm(as.formula(paste("registered", trainVars)), data = train)
+# gbm.fit.cas <- gbm(as.formula(paste("casual", trainVars)), data = train)
+# gbm.pred.reg <- expm1(predict(gbm.fit.reg, newdata = test,
+#                               n.trees = gbm.fit.reg$n.trees))
+# gbm.pred.cas <- expm1(predict(gbm.fit.cas, newdata = test,
+#                               n.trees = gbm.fit.cas$n.trees))
 
 # average the models together
 preds <- rowMeans(data.frame(ctree = (ctree.pred.reg + ctree.pred.cas),
@@ -89,7 +108,7 @@ preds <- rowMeans(data.frame(ctree = (ctree.pred.reg + ctree.pred.cas),
 
 # submission output file
 submit <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit, "bag_20150219.csv", row.names = F)
+# write.csv(submit, "bag_20150220.csv", row.names = F)
 
 ```
 
