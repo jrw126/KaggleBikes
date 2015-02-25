@@ -43,6 +43,7 @@ dataPrep <- function(x) {
                                              month(datetime),
                                              day(datetime))))
       x$day <- factor(weekdays(x$datetime))
+      x$daynum <- factor(day(x$datetime))
       x$hour <- factor(as.integer(format(x$datetime, format = "%H")))
       x$is_sun <- factor(ifelse(x$day == "Sunday", 1, 0))
       x$is_sat <- factor(ifelse(x$day == "Saturday", 1, 0))
@@ -78,7 +79,7 @@ train <- dataPrep(train); test <- dataPrep(test)
 # http://beyondvalence.blogspot.com/2014/06/predicting-capital-bikeshare-demand-in.html
 
 # exploratory graphs
-xyplot(count ~ 1:nrow(train) | week, data = train, group = month)
+xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = temp_b)
 
 ```
 
@@ -104,8 +105,9 @@ preds <- rowSums(data.frame(rf.pred.reg, rf.pred.cas), na.rm = T)
 
 # submission output file
 submit <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit, "bag_20150223.csv", row.names = F)
-# NEXT TEST: DO NOT CONVERT TO INTEGER
+# write.csv(submit, "bag_20150224.csv", row.names = F)
+# FIND A WAY TO ADJUST FOR XMAS/NYE AND THXGIVING - THESE ARE NOT IN TRAIN SET
+### maybe: if month == november & day = thursday & week = 3 then holiday = 1?
 
 ```
 
