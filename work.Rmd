@@ -12,6 +12,7 @@ library(lubridate)
 library(lattice)
 library(gbm)
 library(ProgGUIinR)
+library(nnet)
 
 setwd("C:\\Users\\jwright\\Desktop\\p5")
 
@@ -47,6 +48,46 @@ dataPrep <- function(x) {
       x$hour <- factor(as.integer(format(x$datetime, format = "%H")))
       x$is_sun <- factor(ifelse(x$day == "Sunday", 1, 0))
       x$is_sat <- factor(ifelse(x$day == "Saturday", 1, 0))
+      
+      ## Holiday Adjustments ######################################################
+      # xmas / NYE
+      x$holiday[x$month == "December" & x$daynum %in% c(23, 24, 25, 26, 31)] <- 1
+      
+      # thanksgiving
+      x$holiday[x$month == "November" & x$week == 3 & (x$day == "Wednesday" |
+                                                      x$day == "Thursday" | 
+                                                      x$day == "Friday")] <- 1
+      
+      # halloween
+      x$holiday[x$month == "October" & x$daynum == 31] <- 1
+      
+      # labor day
+      x$holiday[x$month == "September" & x$week == 1 & x$day == "Monday"] <- 1
+      
+      # independence day
+      x$holiday[x$month == "July" & x$daynum == 4] <- 1
+      
+      # memorial day
+      x$holiday[x$month == "May" & x$day == "Monday" & x$week == 4] <- 1
+      
+      # pres day
+      x$holiday[x$month == "February" & x$weeknum == 3 & x$day == "Monday"] <- 1
+      
+      # MLK day
+      x$holiday[x$month == "January" & x$week == 3 & x$day == "Monday"] <- 1
+      
+      # new years day
+      x$holiday[x$month == "January" & x$daynum == 1] <- 1
+      
+      # superbowl
+      x$holiday[x$month == "February" & x$daynum == 6 & x$year == 2011] <- 1
+      x$holiday[x$month == "February" & x$daynum == 5 & x$year == 2012] <- 1
+      
+      # Washington DC Marathon
+      x$holiday[x$month == "March" & x$daynum == 17 & x$year == 2012] <- 1
+      x$holiday[x$month == "March" & x$daynum == 26 & x$year == 2011] <- 1
+      #############################################################################
+      
       for (d in unique(x$day)) {
             x[, d] <- factor(ifelse(x$day == d, 1, 0))
       }
@@ -69,7 +110,17 @@ dataPrep <- function(x) {
       x$busy[x$hour %in% c(7, 11, 12, 13, 14, 15, 16, 19)] <- "high"
       x$busy[x$hour %in% c(8, 17, 18)] <- "veryhigh"
       x$busy <- factor(x$busy)
+      
+      # total stations
+      x$stations <- 0
+      x$stations[x$datetime > "2011-04-11"] <- 25
+      x$stations[x$datetime > "2011-07-27"] <- 57
+      x$stations[x$datetime > "2012-03-16"] <- 59
+      x$stations[x$datetime > "2012-10-30"] <- 117
+      x$stations <- factor(x$stations)
+      
       x
+      
 }
 
 train[, c("registered", "casual")] <- lapply(train[, c("registered", "casual")], log1p)
@@ -79,7 +130,7 @@ train <- dataPrep(train); test <- dataPrep(test)
 # http://beyondvalence.blogspot.com/2014/06/predicting-capital-bikeshare-demand-in.html
 
 # exploratory graphs
-xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = temp_b)
+xyplot(expm1(casual) ~ 1:nrow(train) | hour, data = train, group = workingday)
 
 ```
 
@@ -101,13 +152,22 @@ rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
 rf.pred.reg <- expm1(predict(rf.fit.reg, test))
 rf.pred.cas <- expm1(predict(rf.fit.cas, test))
 
+# neural net
+nn.fit.reg <- nnet(as.formula(paste("registered", trainVars)), train, size = 10)
+
+nn.pred.reg <- expm1(predict(nn.fit.reg, test))
+
 preds <- rowSums(data.frame(rf.pred.reg, rf.pred.cas), na.rm = T)
 
 # submission output file
 submit <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit, "bag_20150224.csv", row.names = F)
+# write.csv(submit, "bag_20150225.csv", row.names = F)
 # FIND A WAY TO ADJUST FOR XMAS/NYE AND THXGIVING - THESE ARE NOT IN TRAIN SET
 ### maybe: if month == november & day = thursday & week = 3 then holiday = 1?
+# the company was expanding throughout the time period. find a way to adjust
+# for total number of stations
+# http://www.capitalbikeshare.com/news/2012/10
+# next add neural network
 
 ```
 
