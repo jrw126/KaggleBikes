@@ -12,7 +12,7 @@ library(lubridate)
 library(lattice)
 library(gbm)
 library(ProgGUIinR)
-library(nnet)
+library(neuralnet)
 
 setwd("C:\\Users\\jwright\\Desktop\\p5")
 
@@ -119,6 +119,9 @@ dataPrep <- function(x) {
       x$stations[x$datetime > "2012-10-30"] <- 117
       x$stations <- factor(x$stations)
       
+      # hardly any values where weather == 4 (1 in train and 2 in test)
+#       x$weather[x$weather == 4] <- 3
+      
       x
       
 }
@@ -152,16 +155,66 @@ rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
 rf.pred.reg <- expm1(predict(rf.fit.reg, test))
 rf.pred.cas <- expm1(predict(rf.fit.cas, test))
 
-# neural net
-nn.fit.reg <- nnet(as.formula(paste("registered", trainVars)), train, size = 10)
-
-nn.pred.reg <- expm1(predict(nn.fit.reg, test))
-
 preds <- rowSums(data.frame(rf.pred.reg, rf.pred.cas), na.rm = T)
 
-# submission output file
-submit <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit, "bag_20150225.csv", row.names = F)
+## neural net
+# http://www.evanvanness.com/post/100217670076/neuralnet-r-package-neural-network-to-predict
+
+# prep train data
+tmat.reg <- model.matrix(as.formula(paste("registered", trainVars)), train)
+tmat.cas <- model.matrix(as.formula(paste("casual", trainVars)), train)
+tmat.reg <- as.data.frame(tmat.reg)
+tmat.cas <- as.data.frame(tmat.cas)
+tmat.reg <- cbind(tmat.reg, train$registered); names(tmat.reg)[70] <- "registered"
+tmat.cas <- cbind(tmat.cas, train$casual); names(tmat.cas)[70] <- "casual"
+
+# prep test data
+test.nn <- as.data.frame(model.matrix(as.formula(trainVars), data = test))
+test.nn <- test.nn[, 2:ncol(test.nn)]
+
+# training data cleanup
+names(tmat.reg)[1] <- "year2011"; names(tmat.cas)[1] <- "year2011"
+nnVars <- paste(names(tmat.reg)[1:69], collapse = "+")
+
+f.reg <- as.formula(paste("registered ~", nnVars))
+f.cas <- as.formula(paste("casual ~", nnVars))
+
+# nn model for registered
+nn.fit.reg <- neuralnet(f.reg, tmat.reg, 
+                        hidden = c(7, 8, 9, 8, 7), 
+                        threshold = .04,
+                        stepmax = 1e+06,
+                        learningrate = .001,
+                        algorithm = "rprop+",
+                        lifesign = "full",
+                        likelihood = T)
+
+# nn model for casual
+nn.fit.cas <- neuralnet(f.cas, tmat.cas, 
+                        hidden = c(7, 8, 9, 8, 7), 
+                        threshold = .04,
+                        stepmax = 1e+06,
+                        learningrate = .001,
+                        algorithm = "rprop+",
+                        lifesign = "full",
+                        likelihood = T)
+
+# predictions
+nn.pred.reg <- expm1(compute(nn.fit.reg, test.nn)$net.rsult)
+nn.pred.cas <- expm1(compute(nn.fit.cas, test.nn)$net.rsult)
+
+nn.preds <- nn.pred.reg + nn.pred.cas
+nn.preds[nn.preds < 0] <- 1
+
+# submission output file for nn
+submit_nn <- data.frame(datetime = test$datetime, count = as.integer(nn.preds))
+write.csv(submit_nn, "nn_20150226.csv", row.names = F)
+
+# submission output file for rf
+submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
+# write.csv(submit_rf, "bag_20150225.csv", row.names = F)
+
+
 # FIND A WAY TO ADJUST FOR XMAS/NYE AND THXGIVING - THESE ARE NOT IN TRAIN SET
 ### maybe: if month == november & day = thursday & week = 3 then holiday = 1?
 # the company was expanding throughout the time period. find a way to adjust
@@ -193,6 +246,13 @@ submit <- data.frame(datetime = test$datetime, count = as.integer(preds))
 # preds <- rowMeans(data.frame(ctree = (ctree.pred.reg + ctree.pred.cas),
 #                              rf = (rf.pred.reg + rf.pred.cas)
 #                              ), na.rm = T)
+
+# old nn
+# 
+# nn.fit.reg <- nnet(as.formula(paste("registered", trainVars)), train, size = 10)
+# 
+# nn.pred.reg <- expm1(predict(nn.fit.reg, test))
+
 
 
 
