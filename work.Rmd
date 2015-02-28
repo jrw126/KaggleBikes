@@ -59,7 +59,7 @@ dataPrep <- function(x) {
                                                       x$day == "Friday")] <- 1
       
       # halloween
-      x$holiday[x$month == "October" & x$daynum == 31] <- 1
+#       x$holiday[x$month == "October" & x$daynum == 31] <- 1
       
       # labor day
       x$holiday[x$month == "September" & x$week == 1 & x$day == "Monday"] <- 1
@@ -88,12 +88,13 @@ dataPrep <- function(x) {
       x$holiday[x$month == "March" & x$daynum == 26 & x$year == 2011] <- 1
       #############################################################################
       
-      for (d in unique(x$day)) {
-            x[, d] <- factor(ifelse(x$day == d, 1, 0))
-      }
-      for (m in unique(x$month)) {
-            x[, m] <- factor(ifelse(x$month == m, 1, 0))
-      }
+#       for (d in unique(x$day)) {
+#             x[, d] <- factor(ifelse(x$day == d, 1, 0))
+#       }
+#       for (m in unique(x$month)) {
+#             x[, m] <- factor(ifelse(x$month == m, 1, 0))
+#       }
+
       x$temp_b <- cut(x$temp, 
                       breaks = c(0, 10, 15, 24, 31, 100),
                       labels = c("cold", "chilly", "comfortable", "warm", "hot"))
@@ -133,7 +134,7 @@ train <- dataPrep(train); test <- dataPrep(test)
 # http://beyondvalence.blogspot.com/2014/06/predicting-capital-bikeshare-demand-in.html
 
 # exploratory graphs
-xyplot(expm1(casual) ~ 1:nrow(train) | hour, data = train, group = workingday)
+xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = busy)
 
 ```
 
@@ -142,10 +143,13 @@ xyplot(expm1(casual) ~ 1:nrow(train) | hour, data = train, group = workingday)
 set.seed(123)
 
 # model formula
-trainVars <- "~ year + season + holiday + workingday + weather + 
+trainVars <- "~ year + season + month + day + 
+              holiday + workingday + weather + 
               hour + atemp_b + windy + 
-              is_sat + is_sun + month + day +
-              timerange + busy + temp_b"
+              is_sat + is_sun + 
+              timerange + busy + temp_b +
+              temp + atemp + 
+              week"
 
 # fit the models
 
@@ -155,7 +159,37 @@ rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
 rf.pred.reg <- expm1(predict(rf.fit.reg, test))
 rf.pred.cas <- expm1(predict(rf.fit.cas, test))
 
-preds <- rowSums(data.frame(rf.pred.reg, rf.pred.cas), na.rm = T)
+# get 95th percentiles by hour
+# top.reg <- data.frame(
+#            aggregate(expm1(registered) ~ hour, train, function(x) quantile(x, probs = .95)))
+# top.cas <- data.frame(
+#            aggregate(expm1(casual) ~ hour, train, function(x) quantile(x, probs = .95)))
+# tops <- merge(merge(test, top.reg), top.cas)[, c(2, 43:44)]
+# names(tops) <- c("hour", "top.reg", "top.cas")
+
+# both <- data.frame(ifelse(rf.pred.reg > tops$top.reg, tops$top.reg, rf.pred.reg), 
+#                    ifelse(rf.pred.cas > tops$top.cas, tops$top.cas, rf.pred.cas))
+both <- data.frame(rf.pred.reg, rf.pred.cas)
+preds <- rowSums(both, na.rm = T)
+
+# submission output file for rf
+submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
+# write.csv(submit_rf, "bag_20150226.csv", row.names = F)
+
+
+qplot(train$datetime, 
+      train$count, 
+      xlim = c(min(train$datetime), max(test$datetime)),
+      color = "skyblue") + 
+      geom_point(data = submit_rf, aes(datetime, count, color = "salmon")) + 
+      theme(legend.position = 0)
+
+highcount <- train[train$count > quantile(train$count, probs = .75), ]
+# xyplot(expm1(casual) ~ 1:nrow(highcount) | day, data = highcount, group = holiday)
+
+```
+
+```{r}
 
 ## neural net
 # http://www.evanvanness.com/post/100217670076/neuralnet-r-package-neural-network-to-predict
@@ -210,9 +244,6 @@ nn.preds[nn.preds < 0] <- 1
 submit_nn <- data.frame(datetime = test$datetime, count = as.integer(nn.preds))
 write.csv(submit_nn, "nn_20150226.csv", row.names = F)
 
-# submission output file for rf
-submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit_rf, "bag_20150225.csv", row.names = F)
 
 
 # FIND A WAY TO ADJUST FOR XMAS/NYE AND THXGIVING - THESE ARE NOT IN TRAIN SET
@@ -226,6 +257,12 @@ submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
 
 # old stuff
 ```{r}
+
+# old formula:
+# trainVars <- "~ year + season + holiday + workingday + weather + 
+#               hour + atemp_b + windy + 
+#               is_sat + is_sun + month + day +
+#               timerange + busy + temp_b"
 
 
 # ctree
@@ -255,4 +292,4 @@ submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
 
 
 
-
+```
