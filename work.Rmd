@@ -88,9 +88,9 @@ dataPrep <- function(x) {
       x$holiday[x$month == "March" & x$daynum == 26 & x$year == 2011] <- 1
       #############################################################################
       
-#       for (d in unique(x$day)) {
-#             x[, d] <- factor(ifelse(x$day == d, 1, 0))
-#       }
+      for (d in unique(x$day)) {
+            x[, d] <- factor(ifelse(x$day == d, 1, 0))
+      }
 #       for (m in unique(x$month)) {
 #             x[, m] <- factor(ifelse(x$month == m, 1, 0))
 #       }
@@ -150,14 +150,16 @@ xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = humidity_b)
 set.seed(123)
 
 # model formula
-trainVars <- "~ year + season + month + day + 
+trainVars <- "~ year + season + month + 
               holiday + workingday + weather + 
               hour + windy + 
-              is_sat + is_sun + 
-              timerange + busy +
+              Saturday + Sunday + Monday + Tuesday + Wednesday + Thursday + Friday +
               temp + atemp + 
               humidity"
 
+#  + day
+#               timerange + busy +
+#               is_sat + is_sun + 
 # + temp_b + atemp_b 
 
 # fit the models
@@ -194,7 +196,7 @@ submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
 
 
 qplot(train$datetime, 
-      train$count, 
+      expm1(train$count), 
       xlim = c(min(train$datetime), max(test$datetime)),
       color = "skyblue") + 
       geom_point(data = submit_rf, aes(datetime, count, color = "salmon")) + 
