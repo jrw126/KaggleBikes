@@ -30,7 +30,7 @@ cleaner <- function(x) {
       x$datetime <- as.POSIXct(x$datetime)
       x[, 2:5] <- lapply(x[, 2:5], factor)
       x[, c(6:7, 9)] <- lapply(x[, c(6:7, 9)], as.numeric)
-      x[, 8] <- lapply(x[, 8], function(x) as.integer(as.character(x)))
+#       x[, 8] <- lapply(x[, 8], function(x) as.integer(as.character(x)))
       x
 }
 
@@ -105,6 +105,13 @@ dataPrep <- function(x) {
       x$timerange <- cut(as.numeric(x$hour),
                          breaks = c(0, 7, 12, 17, 21, 24),
                          labels = c("early", "morning", "afternoon", "evening", "night"))
+      
+      x$humidity_b <- cut(x$humidity,
+                          breaks = c(-1, 25, 60, 101),
+                          labels = c("low", "comfortable", "sticky"))
+
+
+
       x$busy <- "verylow"
       x$busy[x$hour %in% c(0, 6, 22, 23)] <- "low"
       x$busy[x$hour %in% c(9, 10, 20, 21)] <- "moderate"
@@ -127,14 +134,14 @@ dataPrep <- function(x) {
       
 }
 
-train[, c("registered", "casual")] <- lapply(train[, c("registered", "casual")], log1p)
+train[, c("registered", "casual", "count")] <- lapply(train[, c("registered", "casual", "count")], log1p)
 train <- dataPrep(train); test <- dataPrep(test)
 
 # http://blog.dato.com/using-gradient-boosted-trees-to-predict-bike-sharing-demand
 # http://beyondvalence.blogspot.com/2014/06/predicting-capital-bikeshare-demand-in.html
 
 # exploratory graphs
-xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = busy)
+xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = humidity_b)
 
 ```
 
@@ -145,19 +152,27 @@ set.seed(123)
 # model formula
 trainVars <- "~ year + season + month + day + 
               holiday + workingday + weather + 
-              hour + atemp_b + windy + 
+              hour + windy + 
               is_sat + is_sun + 
-              timerange + busy + temp_b +
+              timerange + busy +
               temp + atemp + 
-              week"
+              humidity"
+
+# + temp_b + atemp_b 
 
 # fit the models
 
 # randomforest
-rf.fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train)
-rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train)
+rf.fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train,
+                           ntree = 1000, mtry = 6)
+rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train,
+                           ntree = 1000, mtry = 6)
+rf.fit.cnt <- randomForest(as.formula(paste("count", trainVars)), train,
+                           ntree = 1000, mtry = 6)
+
 rf.pred.reg <- expm1(predict(rf.fit.reg, test))
 rf.pred.cas <- expm1(predict(rf.fit.cas, test))
+rf.pred.cnt <- expm1(predict(rf.fit.cnt, test))
 
 # get 95th percentiles by hour
 # top.reg <- data.frame(
@@ -170,11 +185,12 @@ rf.pred.cas <- expm1(predict(rf.fit.cas, test))
 # both <- data.frame(ifelse(rf.pred.reg > tops$top.reg, tops$top.reg, rf.pred.reg), 
 #                    ifelse(rf.pred.cas > tops$top.cas, tops$top.cas, rf.pred.cas))
 both <- data.frame(rf.pred.reg, rf.pred.cas)
-preds <- rowSums(both, na.rm = T)
+
+preds <- rowMeans(data.frame(rowSums(both, na.rm = T), rf.pred.cnt), na.rm = T)
 
 # submission output file for rf
 submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit_rf, "bag_20150226.csv", row.names = F)
+# write.csv(submit_rf, "bag_20150302.csv", row.names = F)
 
 
 qplot(train$datetime, 
