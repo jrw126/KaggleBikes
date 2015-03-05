@@ -127,8 +127,8 @@ dataPrep <- function(x) {
       x$stations[x$datetime > "2012-10-30"] <- 117
       x$stations <- factor(x$stations)
       
-      # hardly any values where weather == 4 (1 in train and 2 in test)
-#       x$weather[x$weather == 4] <- 3
+#       hardly any values where weather == 4 (1 in train and 2 in test)
+      x$weather[x$weather == 4] <- 3
       
       x
       
@@ -152,11 +152,12 @@ set.seed(123)
 # model formula
 trainVars <- "~ year + season + month + 
               holiday + workingday + weather + 
-              hour + windy + 
-              Saturday + Sunday + Monday + Tuesday + Wednesday + Thursday + Friday +
+              hour + day +
               temp + atemp + 
-              humidity"
+              humidity + 
+              windspeed"
 
+#  + windy
 #  + day
 #               timerange + busy +
 #               is_sat + is_sun + 
@@ -169,12 +170,12 @@ rf.fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train,
                            ntree = 1000, mtry = 6)
 rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train,
                            ntree = 1000, mtry = 6)
-rf.fit.cnt <- randomForest(as.formula(paste("count", trainVars)), train,
-                           ntree = 1000, mtry = 6)
+# rf.fit.cnt <- randomForest(as.formula(paste("count", trainVars)), train,
+#                            ntree = 1000, mtry = 6)
 
 rf.pred.reg <- expm1(predict(rf.fit.reg, test))
 rf.pred.cas <- expm1(predict(rf.fit.cas, test))
-rf.pred.cnt <- expm1(predict(rf.fit.cnt, test))
+# rf.pred.cnt <- expm1(predict(rf.fit.cnt, test))
 
 # get 95th percentiles by hour
 # top.reg <- data.frame(
@@ -188,11 +189,11 @@ rf.pred.cnt <- expm1(predict(rf.fit.cnt, test))
 #                    ifelse(rf.pred.cas > tops$top.cas, tops$top.cas, rf.pred.cas))
 both <- data.frame(rf.pred.reg, rf.pred.cas)
 
-preds <- rowMeans(data.frame(rowSums(both, na.rm = T), rf.pred.cnt), na.rm = T)
+preds <- rowSums(both, na.rm = T)
 
 # submission output file for rf
 submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit_rf, "bag_20150302.csv", row.names = F)
+# write.csv(submit_rf, "bag_20150303.csv", row.names = F)
 
 
 qplot(train$datetime, 
