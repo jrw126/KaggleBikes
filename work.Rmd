@@ -13,6 +13,7 @@ library(lattice)
 library(gbm)
 library(ProgGUIinR)
 library(neuralnet)
+library(e1071)
 
 setwd("C:\\Users\\jwright\\Desktop\\p5")
 
@@ -96,10 +97,10 @@ dataPrep <- function(x) {
 #       }
 
       x$temp_b <- cut(x$temp, 
-                      breaks = c(0, 10, 15, 24, 31, 100),
+                      breaks = c(-1, 10, 15, 24, 31, 100),
                       labels = c("cold", "chilly", "comfortable", "warm", "hot"))
       x$atemp_b <- cut(x$atemp, 
-                       breaks = c(0, 10, 15, 24, 31, 100),
+                       breaks = c(-1, 10, 15, 24, 31, 100),
                        labels = c("cold", "chilly", "comfortable", "warm", "hot"))
       x$windy <- factor(ifelse(x$windspeed > 35, 1, 0))
       x$timerange <- cut(as.numeric(x$hour),
@@ -141,7 +142,7 @@ train <- dataPrep(train); test <- dataPrep(test)
 # http://beyondvalence.blogspot.com/2014/06/predicting-capital-bikeshare-demand-in.html
 
 # exploratory graphs
-xyplot(expm1(casual) ~ 1:nrow(train) | day, data = train, group = humidity_b)
+xyplot(expm1(casual) ~ 1:nrow(train) | hour, data = train, group = month)
 
 ```
 
@@ -163,6 +164,7 @@ trainVars <- "~ year + season + month +
 #               is_sat + is_sun + 
 # + temp_b + atemp_b 
 
+
 # fit the models
 
 # randomforest
@@ -170,31 +172,33 @@ rf.fit.reg <- randomForest(as.formula(paste("registered", trainVars)), train,
                            ntree = 1000, mtry = 6)
 rf.fit.cas <- randomForest(as.formula(paste("casual", trainVars)), train,
                            ntree = 1000, mtry = 6)
-# rf.fit.cnt <- randomForest(as.formula(paste("count", trainVars)), train,
-#                            ntree = 1000, mtry = 6)
 
 rf.pred.reg <- expm1(predict(rf.fit.reg, test))
 rf.pred.cas <- expm1(predict(rf.fit.cas, test))
-# rf.pred.cnt <- expm1(predict(rf.fit.cnt, test))
 
-# get 95th percentiles by hour
-# top.reg <- data.frame(
-#            aggregate(expm1(registered) ~ hour, train, function(x) quantile(x, probs = .95)))
-# top.cas <- data.frame(
-#            aggregate(expm1(casual) ~ hour, train, function(x) quantile(x, probs = .95)))
-# tops <- merge(merge(test, top.reg), top.cas)[, c(2, 43:44)]
-# names(tops) <- c("hour", "top.reg", "top.cas")
-
-# both <- data.frame(ifelse(rf.pred.reg > tops$top.reg, tops$top.reg, rf.pred.reg), 
-#                    ifelse(rf.pred.cas > tops$top.cas, tops$top.cas, rf.pred.cas))
 both <- data.frame(rf.pred.reg, rf.pred.cas)
 
 preds <- rowSums(both, na.rm = T)
 
+# svm
+svm.fit.reg <- svm(as.formula(paste("registered", trainVars)), train)
+svm.fit.cas <- svm(as.formula(paste("casual", trainVars)), train)
+
+svm.pred.reg <- expm1(predict(svm.fit.reg, test))
+svm.pred.cas <- expm1(predict(svm.fit.cas, test))
+preds.svm <- rowSums(data.frame(svm.pred.reg, svm.pred.cas), na.rm = T)
+
+# submission output file for svm
+submit_svm <- data.frame(datetime = test$datetime, count = as.integer(preds.svm))
+
 # submission output file for rf
 submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
-# write.csv(submit_rf, "bag_20150303.csv", row.names = F)
 
+# submission for ensemble
+submit_ens <- data.frame(datetime = test$datetime,
+                         count = rowMeans(data.frame(preds, preds.svm), na.rm = T))
+
+# write.csv(submit_ens, "bag_20150305.csv", row.names = F)
 
 qplot(train$datetime, 
       expm1(train$count), 
@@ -205,6 +209,33 @@ qplot(train$datetime,
 
 highcount <- train[train$count > quantile(train$count, probs = .75), ]
 # xyplot(expm1(casual) ~ 1:nrow(highcount) | day, data = highcount, group = holiday)
+
+# check which model performs better on different time frames
+rf.pred.train.reg <- expm1(predict(rf.fit.reg, train))
+rf.pred.train.cas <- expm1(predict(rf.fit.cas, train))
+svm.pred.train.reg <- expm1(predict(svm.fit.reg, train))
+svm.pred.train.cas <- expm1(predict(svm.fit.cas, train))
+
+compare <- data.frame(
+      datetime = train$datetime,
+      hour = train$hour,
+      month = train$month,
+      actual.reg = expm1(train$registered),
+      actual.cas = expm1(train$casual),
+      actual.count = expm1(train$count),
+      rf.reg = as.integer(rf.pred.train.reg),
+      rf.cas = as.integer(rf.pred.train.cas),
+      rf.count = as.integer(rowSums(data.frame(rf.pred.train.reg, rf.pred.train.cas))),
+      svm.reg = as.integer(svm.pred.train.reg),
+      svm.cas = as.integer(svm.pred.train.cas),
+      svm.count = as.integer(rowSums(data.frame(svm.pred.train.reg, svm.pred.train.cas)))
+      )
+compare$rf.reg.error <- as.integer(abs(compare$rf.reg - compare$actual.reg))
+compare$rf.cas.error <- as.integer(abs(compare$rf.cas - compare$actual.cas))
+compare$rf.error <- as.integer(abs(compare$rf.count - compare$actual.count))
+compare$svm.reg.error <- as.integer(abs(compare$svm.reg - compare$actual.reg))
+compare$svm.cas.error <- as.integer(abs(compare$svm.cas - compare$actual.cas))
+compare$svm.error <- as.integer(abs(compare$svm.count - compare$actual.count))
 
 ```
 
@@ -308,6 +339,16 @@ write.csv(submit_nn, "nn_20150226.csv", row.names = F)
 # nn.fit.reg <- nnet(as.formula(paste("registered", trainVars)), train, size = 10)
 # 
 # nn.pred.reg <- expm1(predict(nn.fit.reg, test))
+
+
+# lm.fit.reg <- lm(as.formula(paste("registered", trainVars)), train)
+# lm.fit.cas <- lm(as.formula(paste("casual", trainVars)), train)
+# lm.pred.reg <- expm1(predict(lm.fit.reg, test))
+# lm.pred.cas <- expm1(predict(lm.fit.cas, test))
+# bothlm <- data.frame(lm.pred.reg, lm.pred.cas)
+# bothlm <- sapply(bothlm, function(x) ifelse(x < 0, 0, x))
+# preds.lm <- as.integer(rowSums(bothlm, na.rm = T))
+# submit_lm <- data.frame(datetime = test$datetime, count = preds.lm)
 
 
 
