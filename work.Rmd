@@ -52,41 +52,31 @@ dataPrep <- function(x) {
       
       ## Holiday Adjustments ######################################################
       # xmas / NYE
-      x$holiday[x$month == "December" & x$daynum %in% c(23, 24, 25, 26, 31)] <- 1
+      x$fam_holiday <- 0
+      x$fam_holiday[x$month == "December" & x$daynum %in% c(23, 24, 25, 26, 31)] <- 1
       
       # thanksgiving
-      x$holiday[x$month == "November" & x$week == 3 & (x$day == "Wednesday" |
+      x$fam_holiday[x$month == "November" & x$week == 3 & (x$day == "Wednesday" |
                                                       x$day == "Thursday" | 
                                                       x$day == "Friday")] <- 1
       
-      # halloween
-#       x$holiday[x$month == "October" & x$daynum == 31] <- 1
-      
-      # labor day
-      x$holiday[x$month == "September" & x$week == 1 & x$day == "Monday"] <- 1
+#       halloween
+      x$fam_holiday[x$month == "October" & x$daynum == 31] <- 1
       
       # independence day
-      x$holiday[x$month == "July" & x$daynum == 4] <- 1
-      
-      # memorial day
-      x$holiday[x$month == "May" & x$day == "Monday" & x$week == 4] <- 1
-      
-      # pres day
-      x$holiday[x$month == "February" & x$weeknum == 3 & x$day == "Monday"] <- 1
-      
-      # MLK day
-      x$holiday[x$month == "January" & x$week == 3 & x$day == "Monday"] <- 1
-      
+      x$fam_holiday[x$month == "July" & x$daynum == 4] <- 1
+
       # new years day
-      x$holiday[x$month == "January" & x$daynum == 1] <- 1
+      x$fam_holiday[x$month == "January" & x$daynum == 1] <- 1
       
       # superbowl
-      x$holiday[x$month == "February" & x$daynum == 6 & x$year == 2011] <- 1
-      x$holiday[x$month == "February" & x$daynum == 5 & x$year == 2012] <- 1
+      x$fam_holiday[x$month == "February" & x$daynum == 6 & x$year == 2011] <- 1
+      x$fam_holiday[x$month == "February" & x$daynum == 5 & x$year == 2012] <- 1
       
       # Washington DC Marathon
-      x$holiday[x$month == "March" & x$daynum == 17 & x$year == 2012] <- 1
-      x$holiday[x$month == "March" & x$daynum == 26 & x$year == 2011] <- 1
+      x$fam_holiday[x$month == "March" & x$daynum == 17 & x$year == 2012] <- 1
+      x$fam_holiday[x$month == "March" & x$daynum == 26 & x$year == 2011] <- 1
+      x$fam_holiday <- factor(x$fam_holiday)
       #############################################################################
       
       for (d in unique(x$day)) {
@@ -180,25 +170,10 @@ both <- data.frame(rf.pred.reg, rf.pred.cas)
 
 preds <- rowSums(both, na.rm = T)
 
-# svm
-svm.fit.reg <- svm(as.formula(paste("registered", trainVars)), train)
-svm.fit.cas <- svm(as.formula(paste("casual", trainVars)), train)
-
-svm.pred.reg <- expm1(predict(svm.fit.reg, test))
-svm.pred.cas <- expm1(predict(svm.fit.cas, test))
-preds.svm <- rowSums(data.frame(svm.pred.reg, svm.pred.cas), na.rm = T)
-
-# submission output file for svm
-submit_svm <- data.frame(datetime = test$datetime, count = as.integer(preds.svm))
-
 # submission output file for rf
 submit_rf <- data.frame(datetime = test$datetime, count = as.integer(preds))
 
-# submission for ensemble
-submit_ens <- data.frame(datetime = test$datetime,
-                         count = rowMeans(data.frame(preds, preds.svm), na.rm = T))
-
-# write.csv(submit_ens, "bag_20150305.csv", row.names = F)
+# write.csv(submit_rf, "bag_20150306.csv", row.names = F)
 
 qplot(train$datetime, 
       expm1(train$count), 
@@ -209,34 +184,6 @@ qplot(train$datetime,
 
 highcount <- train[train$count > quantile(train$count, probs = .75), ]
 # xyplot(expm1(casual) ~ 1:nrow(highcount) | day, data = highcount, group = holiday)
-
-# check which model performs better on different time frames
-rf.pred.train.reg <- expm1(predict(rf.fit.reg, train))
-rf.pred.train.cas <- expm1(predict(rf.fit.cas, train))
-svm.pred.train.reg <- expm1(predict(svm.fit.reg, train))
-svm.pred.train.cas <- expm1(predict(svm.fit.cas, train))
-
-compare <- data.frame(
-      datetime = train$datetime,
-      hour = train$hour,
-      month = train$month,
-      actual.reg = expm1(train$registered),
-      actual.cas = expm1(train$casual),
-      actual.count = expm1(train$count),
-      rf.reg = as.integer(rf.pred.train.reg),
-      rf.cas = as.integer(rf.pred.train.cas),
-      rf.count = as.integer(rowSums(data.frame(rf.pred.train.reg, rf.pred.train.cas))),
-      svm.reg = as.integer(svm.pred.train.reg),
-      svm.cas = as.integer(svm.pred.train.cas),
-      svm.count = as.integer(rowSums(data.frame(svm.pred.train.reg, svm.pred.train.cas)))
-      )
-compare$rf.reg.error <- as.integer(abs(compare$rf.reg - compare$actual.reg))
-compare$rf.cas.error <- as.integer(abs(compare$rf.cas - compare$actual.cas))
-compare$rf.error <- as.integer(abs(compare$rf.count - compare$actual.count))
-compare$svm.reg.error <- as.integer(abs(compare$svm.reg - compare$actual.reg))
-compare$svm.cas.error <- as.integer(abs(compare$svm.cas - compare$actual.cas))
-compare$svm.error <- as.integer(abs(compare$svm.count - compare$actual.count))
-
 ```
 
 ```{r}
@@ -350,6 +297,61 @@ write.csv(submit_nn, "nn_20150226.csv", row.names = F)
 # preds.lm <- as.integer(rowSums(bothlm, na.rm = T))
 # submit_lm <- data.frame(datetime = test$datetime, count = preds.lm)
 
+      #       # labor day
+#       x$holiday[x$month == "September" & x$week == 1 & x$day == "Monday"] <- 1
+#       
+#       # memorial day
+#       x$holiday[x$month == "May" & x$day == "Monday" & x$week == 4] <- 1
+      
+#       # pres day
+#       x$holiday[x$month == "February" & x$weeknum == 3 & x$day == "Monday"] <- 1
+#       
+#       # MLK day
+#       x$holiday[x$month == "January" & x$week == 3 & x$day == "Monday"] <- 1
 
+# # svm
+# svm.fit.reg <- svm(as.formula(paste("registered", trainVars)), train)
+# svm.fit.cas <- svm(as.formula(paste("casual", trainVars)), train)
+# 
+# svm.pred.reg <- expm1(predict(svm.fit.reg, test))
+# svm.pred.cas <- expm1(predict(svm.fit.cas, test))
+# preds.svm <- rowSums(data.frame(svm.pred.reg, svm.pred.cas), na.rm = T)
+
+# 
+# 
+# 
+# # submission output file for svm
+# submit_svm <- data.frame(datetime = test$datetime, count = as.integer(preds.svm))
+# 
+# # submission for ensemble
+# submit_ens <- data.frame(datetime = test$datetime,
+#                          count = rowMeans(data.frame(preds, preds.svm), na.rm = T))
+
+# # check which model performs better on different time frames
+# rf.pred.train.reg <- expm1(predict(rf.fit.reg, train))
+# rf.pred.train.cas <- expm1(predict(rf.fit.cas, train))
+# svm.pred.train.reg <- expm1(predict(svm.fit.reg, train))
+# svm.pred.train.cas <- expm1(predict(svm.fit.cas, train))
+# 
+# compare <- data.frame(
+#       datetime = train$datetime,
+#       hour = train$hour,
+#       month = train$month,
+#       actual.reg = expm1(train$registered),
+#       actual.cas = expm1(train$casual),
+#       actual.count = expm1(train$count),
+#       rf.reg = as.integer(rf.pred.train.reg),
+#       rf.cas = as.integer(rf.pred.train.cas),
+#       rf.count = as.integer(rowSums(data.frame(rf.pred.train.reg, rf.pred.train.cas))),
+#       svm.reg = as.integer(svm.pred.train.reg),
+#       svm.cas = as.integer(svm.pred.train.cas),
+#       svm.count = as.integer(rowSums(data.frame(svm.pred.train.reg, svm.pred.train.cas)))
+#       )
+# compare$rf.reg.error <- as.integer(abs(compare$rf.reg - compare$actual.reg))
+# compare$rf.cas.error <- as.integer(abs(compare$rf.cas - compare$actual.cas))
+# compare$rf.error <- as.integer(abs(compare$rf.count - compare$actual.count))
+# compare$svm.reg.error <- as.integer(abs(compare$svm.reg - compare$actual.reg))
+# compare$svm.cas.error <- as.integer(abs(compare$svm.cas - compare$actual.cas))
+# compare$svm.error <- as.integer(abs(compare$svm.count - compare$actual.count))
 
 ```
